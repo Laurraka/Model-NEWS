@@ -47,5 +47,12 @@ df_cols['Age'] = df_cols.groupby('id_pacient')['Age'].ffill()
 dades=df_cols.drop(columns=["Weight", "Height"])
 del(arxiu, arxius_txt, carpeta, dataframes, df, df_cols, df_total)
 
+#Omplim NaNs
+dades= dades.fillna({
+    'ICUType': dades['ICUType'].ffill(),
+    'MechVent': dades['MechVent'].fillna(0)
+})
+
+
 #Extraiem outcome
 outcome = pd.read_csv("C:/Users/UDM-AFIC/Desktop/Model NEWS/Fold1_Outcomes.csv", sep=",",header=1, names=["id_pacient", "length_of_stay", "death"], encoding="utf-8")
