@@ -5,6 +5,7 @@ Created on Thu Oct 23 12:05:33 2025
 @author: UDM-AFIC
 """
 
+"RANGS NEWS"
 def Resp_Rate(valor):
     if 12<=valor<=20:
         return 0
@@ -54,3 +55,4 @@ def Sa_O2(valor):
         return 2
     elif valor<=91:
         return 3
+
