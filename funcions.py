@@ -10,26 +10,49 @@ import os
 import numpy as np
 
 def omplir_dades(dades):
-    # Treballem sobre una còpia per evitar efectes laterals inesperats
-    df = dades.copy()
+    copia = dades.copy()
+    skip_cols = ['id_pacient', 'data', 'Age', 'Gender']
 
-    skip_cols = ['client_id', 'data', 'age']
-
-    for col in df.columns:
+    for col in copia.columns:
         if col in skip_cols:
             continue
 
-    # Si tota la columna és NaN -> omplir amb 33
-    if df[col].notna().sum() == 0:
-        df[col] = 33
-            continue
+        # Iterem per cada pacient
+        for pacient_id, grup in copia.groupby('id_pacient'):
+            n_nans = grup[col].notna().sum()
 
-    df[col] = df[col].ffill()
-    df[col] = df[col].bfill()
+            if n_nans == 0:
+                # Totes les files d'aquest pacient són NaN
+                copia.loc[copia['id_pacient'] == pacient_id, col] = valors_normals(col)
+            else:
+                # Omple dins del pacient
+                copia.loc[copia['id_pacient'] == pacient_id, col] = (
+                    grup[col].ffill().bfill()
+                )
 
-    return df
+    return copia
 
-"NEWS"
+"NEWS"         
+def valors_normals(parametre):
+    if parametre=="DiasABP":
+        return 75
+    if parametre=="HR":
+        return 75
+    if parametre=="K":
+        return 4.1
+    if parametre=="Lactate":
+        return 1.2
+    if parametre=="RespRate":
+        return 18
+    if parametre=="SaO2":
+        return 98
+    if parametre=="SysABP":
+        return 180
+    if parametre=="Temp":
+        return 35.6
+    if parametre=="pH":
+        return 7.4
+    
 def Resp_Rate(valor):
     if 12<=valor<=20:
         return 0
@@ -45,7 +68,7 @@ def Temperature(valor):
         return 0
     elif 35.1<=valor<=36 or 38.1<=valor<=39:
         return 1
-    elif valor<=39.1:
+    elif valor>=39.1:
         return 2
     elif valor<=35:
         return 3
@@ -88,4 +111,12 @@ def Sa_O2(valor):
     elif 92<=valor<=93:
         return 2
     elif valor<=91:
+        return 3
+
+def Glasgow(valor):
+    if 13<=valor:
+        return 0
+    if 9<=valor<=12:
+        return 1
+    if 3<=valor<=8:
         return 3

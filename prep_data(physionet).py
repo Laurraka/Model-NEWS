@@ -41,20 +41,36 @@ df_cols = df_total.pivot_table(
     values="valor",               # valors que es posaran a les columnes
 ).reset_index()
 
+#Posem a totes les entrades sexe i edat
 df_cols['Gender'] = df_cols.groupby('id_pacient')['Gender'].ffill()
 df_cols['Age'] = df_cols.groupby('id_pacient')['Age'].ffill()
 
 #Netegem
-dades=df_cols[["id_pacient", "data", "Age", "Gender", "DiasABP", "HR", "K", "Lactate", "MechVent", "SaO2", "SysABP", "Temp", "pH"]]
-del(arxiu, arxius_txt, carpeta, dataframes, df, df_cols, df_total)
+dades=df_cols[["id_pacient", "data", "Age", "Gender", "DiasABP", "HR", "K", "Lactate", "MechVent", "RespRate", "SaO2", "SysABP", "Temp", "pH"]]
 
-#Omplim NaNs
+#Arreglem MechVent
 dades= dades.fillna({
     'MechVent': dades['MechVent'].fillna(0)
 })
-df_filled = dades.groupby('id_pacient', group_keys=True)
-groups = {k: v for k, v in df_filled}
-groups['132539']=funcions.omplir_dades(groups['132539'])
+
+dades_fill=funcions.omplir_dades(dades)
+dades_fill['NEWS'] = dades_fill.apply(
+    lambda x: (
+        funcions.Resp_Rate(x["RespRate"]) +
+        funcions.Temperature(x["Temp"])+
+        funcions.Systolic_BP(x["SysABP"])
+    ),
+    axis=1
+)
+
+#Normalitzem les dades
+normvars = ["DiasABP", "HR", "K", "Lactate", "SaO2", "SysABP", "Temp", "pH", "RespRate"]
+for vId in normvars:
+    dades[vId] = (dades[vId] - dades[vId].mean()) / (dades[vId].std() + 1e-12)
+del(arxiu, arxius_txt, carpeta, dataframes, df, df_cols, df_total, normvars, dat vId)
+
+#Omplim les dades
+df_omplert=funcions.omplir_dades(dades)
 
 #Extraiem outcome
 outcome = pd.read_csv("C:/Users/UDM-AFIC/Desktop/Model NEWS/Fold1_Outcomes.csv", sep=",",header=1, names=["id_pacient", "length_of_stay", "death"], encoding="utf-8")
