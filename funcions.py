@@ -21,7 +21,8 @@ def omplir_dades(dades):
         # Iterem per cada pacient
         for pacient_id, grup in copia.groupby('numicu'):
             n_nans = grup[col].notna().sum()
-            sexe = grup['sexo'].iloc[0]   # agafem el sexe del pacient (suposem constant dins del grup)
+            sexe = grup['sexo'].iloc[0]
+            mpoc= grup['antecedent_mpoc'].iloc[0]
 
             if n_nans == 0:
                 # Totes les files d'aquest pacient són NaN → assignem valor normal segons sexe
@@ -33,19 +34,11 @@ def omplir_dades(dades):
     return copia
 
 def resample_pacient(grup):
-    # Establim la data com a índex temporal
     grup = grup.set_index('data')
-
-    # Fem resampling cada 1 hora i calculem la mediana dins de la mateixa hora
-    grup_resampled = grup.resample('1H').median(numeric_only=True)
-
-    # Interpolem els valors NaN (mitjana entre el valor anterior i posterior)
-    grup_resampled = grup_resampled.interpolate(method='time')
-
-    # Recuperem l'id del pacient
+    grup_resampled = grup.resample('1H').mean(numeric_only=True)
+    grup_resampled = grup_resampled.interpolate(method='time', limit_direction='both')
     grup_resampled['numicu'] = grup['numicu'].iloc[0]
 
-    # Tornem a posar la data com a columna normal
     return grup_resampled.reset_index()
 
 "NEWS"         
@@ -61,7 +54,7 @@ def valors_normals(parametre, sexe):
     if parametre=="f_respi":
         return 18
     if parametre=="sato2":
-        return 98
+            return 98
     if parametre=="ta_sist":
         return 180
     if parametre=="t_axilar":
@@ -76,36 +69,38 @@ def valors_normals(parametre, sexe):
     if parametre=="glasgow":
         return 15
     if parametre=="antecedent_mpoc":
+        return "NO"
+    if parametre=="oxigenoterapia":
         return 0
     
 def Resp_Rate(valor):
     if 12<=valor<=20:
         return 0
-    elif 9<=valor<=11:
+    elif 9<=valor<12:
         return 1
-    elif 21<=valor<=24:
+    elif 20<valor<=24:
         return 2
-    elif valor<=8 or valor>=25:
+    elif valor<9 or valor>24:
         return 3
     
 def Temperature(valor):
     if 36.1<=valor<=38:
         return 0
-    elif 35.1<=valor<=36 or 38.1<=valor<=39:
+    elif 35.1<=valor<36.1 or 38<valor<=39:
         return 1
-    elif valor>=39.1:
+    elif valor>39:
         return 2
-    elif valor<=35:
+    elif valor<35.1:
         return 3
     
 def Systolic_BP(valor):
     if 111<=valor<=219:
         return 0
-    elif 101<=valor<=110:
+    elif 101<=valor<111:
         return 1
-    elif 91<=valor<=100:
+    elif 91<=valor<101:
         return 2
-    elif valor<=90 or 220<=valor:
+    elif valor<91 or 219<valor:
         return 3
     
 def Diastolic_BP(valor):
@@ -113,7 +108,7 @@ def Diastolic_BP(valor):
         return 0
     elif 80<=valor<=89:
         return 1
-    elif 90<=valor<=120:
+    elif 89<valor<=120:
         return 2
     elif valor>120:
         return 3
@@ -121,27 +116,43 @@ def Diastolic_BP(valor):
 def HR(valor):
     if 51<=valor<=90:
         return 0
-    elif 41<=valor<=50 or 91<=valor<=110:
+    elif 41<=valor<51 or 90<valor<=110:
         return 1
-    elif 111<=valor<=130:
+    elif 110<valor<=130:
         return 2
-    elif valor<=40 or 131<=valor:
+    elif valor<41 or 130<valor:
         return 3
     
-def Sa_O2(valor):
-    if 96<=valor:
+def Sa_O2(valor, mpoc):
+    if(mpoc=="NO"):
+        if 96<=valor:
+            return 0
+        elif 94<=valor<96:
+            return 1
+        elif 92<=valor<94:
+            return 2
+        elif valor<92:
+            return 3
+    else:
+        if 88<=valor:
+            return 0
+        if 86<=valor<88:
+            return 1
+        if 84<=valor<86:
+            return 2
+        if valor<84:
+            return 3
+    
+def Oxigenoterapia(valor):
+    if valor<1:
         return 0
-    elif 94<=valor<=95:
-        return 1
-    elif 92<=valor<=93:
+    else: 
         return 2
-    elif valor<=91:
-        return 3
 
 def Glasgow(valor):
     if 13<=valor:
         return 0
-    if 9<=valor<=12:
+    if 9<=valor<13:
         return 1
-    if 3<=valor<=8:
+    if 3<=valor<9:
         return 3
