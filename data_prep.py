@@ -37,52 +37,52 @@ dades_filtrat1= dades_filtrat1.sort_values(by=['numicu', 'data'])
 "Creem mostres cada 1h hora"
 dades_filtrat1['data'] = pd.to_datetime(dades_filtrat1['data'], errors='coerce')
 dades_filtrat1['fecha_alta'] = pd.to_datetime(dades_filtrat1['fecha_alta'], errors='coerce')
-resample= dades_filtrat1.groupby('numicu', group_keys=False).apply(funcions.resample_pacient)
+data1= dades_filtrat1.groupby('numicu', group_keys=False).apply(funcions.resample_pacient)
 # Omplim dades que son objects
 df2_ultim = dades_filtrat1.drop_duplicates(subset='numicu', keep='last')
-resample['fecha_alta'] = resample['numicu'].map(
+data1['fecha_alta'] = data1['numicu'].map(
     df2_ultim.set_index('numicu')['fecha_alta']
 )
 
-resample['edat_alta'] = resample['numicu'].map(
+data1['edat_alta'] = data1['numicu'].map(
     df2_ultim.set_index('numicu')['edat_alta']
 )
 
-resample['serveialta'] = resample['numicu'].map(
+data1['serveialta'] = data1['numicu'].map(
     df2_ultim.set_index('numicu')['serveialta']
 )
 
-resample['estada'] = resample['numicu'].map(
+data1['estada'] = data1['numicu'].map(
     df2_ultim.set_index('numicu')['estada']
 )
 
-resample['tipus_assistencia'] = resample['numicu'].map(
+data1['tipus_assistencia'] = data1['numicu'].map(
     df2_ultim.set_index('numicu')['tipus_assistencia']
 )
 
-resample['resultat_alta'] = resample['numicu'].map(
+data1['resultat_alta'] = data1['numicu'].map(
     df2_ultim.set_index('numicu')['resultat_alta']
 )
 
-resample['descripcion'] = resample['numicu'].map(
+data1['descripcion'] = data1['numicu'].map(
     df2_ultim.set_index('numicu')['descripcion']
 )
 
-resample['sexo'] = resample['numicu'].map(
+data1['sexo'] = data1['numicu'].map(
     df2_ultim.set_index('numicu')['sexo']
 )
 
-resample['antecedent_mpoc'] = resample['numicu'].map(
+data1['antecedent_mpoc'] = data1['numicu'].map(
     df2_ultim.set_index('numicu')['antecedent_mpoc']
 )
 
-resample=resample[['numicu', 'data', 'fecha_alta', 'edat_alta', 'serveialta', 
+data1=data1[['numicu', 'data', 'fecha_alta', 'edat_alta', 'serveialta', 
                    'estada', 'tipus_assistencia', 'resultat_alta', 'descripcion', 'sexo', 'potassi',
                    'ph', 'lact', 'hb', 'oxigenoterapia', 'antecedent_mpoc', 'glasgow', 'ta_sist', 
                    'ta_diast', 'ta_mitja', 'fc', 'sato2', 't_axilar', 'f_respi']]
 
 "Calculem el NEWS"
-resample['NEWS'] = resample.apply(
+data1['NEWS'] = data1.apply(
     lambda x: (
         funcions.Resp_Rate(x["f_respi"]) +
         funcions.Temperature(x["t_axilar"]) +
@@ -97,5 +97,6 @@ resample['NEWS'] = resample.apply(
 del(df2_ultim)
 
 "Calculem l'outcome"
-resample['outcome'] = (resample['NEWS'] > 6).astype(int)
-(resample['outcome'] == 1).sum()
+data1['outcome'] = (data1['NEWS'] > 6).astype(int)
+(data1['outcome'] == 1).sum()
+del(dades1, dades_fill1, dades_filtrat1)
