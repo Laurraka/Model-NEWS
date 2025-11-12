@@ -9,69 +9,85 @@ from sklearn.preprocessing import MinMaxScaler
 import seaborn as sns
 import matplotlib.backend_bases
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
 
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout, Masking
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.utils import to_categorical
 
 from data_prep import data1
 
 print(data1.head())
 print(data1.info())
-    
-#Busquem correlació
-#data1.columns
-variables = ['edat_alta', 'potassi','ph', 'lact', 'hb', 'oxigenoterapia', 
-             'glasgow', 'ta_sist', 'ta_diast', 'ta_mitja', 'fc', 'sato2', 't_axilar', 
-             'f_respi', 'outcome']
-corr_subset = data1[variables].corr()
-print(corr_subset)
-plt.figure(figsize=(10, 4))
-sns.heatmap(corr_subset, annot=True, cmap='coolwarm', fmt=".2f")
-plt.title('Correlació entre variables seleccionades')
-plt.show()
-del(variables)
 
 #Separem train set i data set
-outcome=data1.filter(["outcome"])
-outcome=outcome.values
-training_data_len=int(np.ceil(len(outcome)*0.8))
-
-training_data=outcome[:training_data_len]
-
-X_train, y_train= [], []
-
-for i in range(24, len(training_data)):
-    X_train.append(training_data[i-24:i,0])
-    y_train.append(training_data[i,0])
-  
-X_train, y_train=np.array(X_train), np.array(y_train)
-X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], 1))
-
-#Normalitzar dades
-
-#Plotejar 24h anteriors a NEWS>6 
-cols_to_drop = [
-    'outcome', 'numicu', 'data', 'fecha_alta', 'estada', 'edat_alta', 'serveialta',
-    'tipus_assistencia', 'resultat_alta', 'sexo', 'antecedent_mpoc', 'NEWS'
+scaler = StandardScaler()
+features = [
+    'potassi', 'ph', 'lact', 'hb', 'oxigenoterapia', 'glasgow', 'ta_sist', 
+    'ta_diast', 'ta_mitja', 'fc', 'sato2', 't_axilar', 'f_respi'
 ]
 
-for idx in data1.index[data1['outcome'] == 1]:
-    start = max(0, idx - 24)
-    window = data1.iloc[start:idx]   
+pacients = data1['numicu'].unique()
+cut = int(len(pacients) * 0.8)
+train_pacients = pacients[:cut]
+test_pacients  = pacients[cut:]
+data_train = data1[data1['numicu'].isin(train_pacients)].reset_index(drop=True)
+data_test  = data1[data1['numicu'].isin(test_pacients)].reset_index(drop=True)
 
-    if window.empty:
-        continue
+data_train[features] = scaler.fit_transform(data_train[features])
+data_test[features] = scaler.fit_transform(data_test[features])
 
-    plot_df = window.drop(columns=cols_to_drop, errors='ignore')
-    if plot_df.shape[1] == 0:
-        continue
+X_data_train, y_data_train=[], []
+X_data_test, y_data_test=[], []
 
-    plt.figure(figsize=(10, 4))
-    plot_df.plot(ax=plt.gca())
-    plt.title(f"Evolució 24 mostres abans d'outcome=1 (índex {idx})")
-    plt.xlabel('Temps / índex')
-    plt.ylabel('Valor')
-    plt.legend(loc='best')
-    plt.show()
-del(cols_to_drop, idx, plot_df, start, window)
+timesteps = 24
+
+for pid, group in data_train.groupby('numicu'):
+    data = group[features].values
+    labels = group['outcome'].values
+    for i in range(timesteps, len(group)):
+        X_data_train.append(data[i-timesteps:i]) #Tots els pacients seguits
+        y_data_train.append(labels[i])
+        
+for pid, group in data_test.groupby('numicu'):
+    data = group[features].values
+    labels = group['outcome'].values
+    for i in range(timesteps, len(group)):
+        X_data_test.append(data[i-timesteps:i]) #Tots els pacients seguits
+        y_data_test.append(labels[i])
+        
+X_data_train = np.array(X_data_train)
+y_data_train = np.array(y_data_train)
+X_data_test = np.array(X_data_test)
+y_data_test = np.array(y_data_test)
+
+"Model LSTM"
+model = Sequential([
+    Masking(mask_value=0.0, input_shape=(timesteps, X_data_train.shape[2])),
+    LSTM(128, return_sequences=True),
+    Dropout(0.3),
+    LSTM(64),
+    Dropout(0.3),
+    Dense(1, activation='sigmoid')
+])
+
+model.compile(optimizer=Adam(1e-3),
+              loss='binary_crossentropy',
+              metrics=['accuracy', 'AUC', 'Precision', 'Recall'])
+
+model.summary()
+
+"Entrenament"
+history = model.fit(
+    X_data_train, y_data_train,
+    validation_split=0.1,
+    epochs=30,
+    batch_size=64,
+    class_weight={0:1, 1:5},  # per compensar si hi ha poques observacions amb NEWS ≥6
+    verbose=1
+)
+
+results = model.evaluate(X_data_test, y_data_test, verbose=0)
+print(f"\nResultats LSTM - Predicció NEWS≥6:")
+print(f"Exactitud: {results[1]:.3f} | AUC: {results[2]:.3f} | Precisió: {results[3]:.3f} | Recall: {results[4]:.3f}")
