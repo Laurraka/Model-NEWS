@@ -15,6 +15,8 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout, Masking
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.utils import to_categorical
+import shap
+from sklearn.metrics import precision_recall_curve
 
 from data_prep import data1
 
@@ -82,7 +84,7 @@ model.summary()
 history = model.fit(
     X_data_train, y_data_train,
     validation_split=0.1,
-    epochs=30,
+    epochs=20 ,
     batch_size=64,
     class_weight={0:1, 1:5},  # per compensar si hi ha poques observacions amb NEWS ≥6
     verbose=1
@@ -91,3 +93,40 @@ history = model.fit(
 results = model.evaluate(X_data_test, y_data_test, verbose=0)
 print(f"\nResultats LSTM - Predicció NEWS≥6:")
 print(f"Exactitud: {results[1]:.3f} | AUC: {results[2]:.3f} | Precisió: {results[3]:.3f} | Recall: {results[4]:.3f}")
+#TOT A SACO: Exactitud: 0.933 | AUC: 0.943 | Precisió: 0.241 | Recall: 0.836
+#ELIMINANT SERVEIS DESCARTATS: Exactitud: 0.927 | AUC: 0.957 | Precisió: 0.228 | Recall: 0.883
+
+"Millorar sensibilitat"
+probs = model.predict(X_data_test).ravel()
+prec, recall, thresh = precision_recall_curve(y_data_test, probs)
+target_recall = 0.9
+candidates = [(p,r,t) for p,r,t in zip(prec, recall, thresh) if r>=target_recall]
+best = max(candidates, key=lambda x: x[0]) if candidates else (prec[0], recall[0], thresh[0])
+best_threshold = best[2]
+print("Best threshold for recall≥0.9:", best_threshold)
+
+"Plotejar 24 h anteriors a NEWS>6"
+cols_to_drop_plot= [
+    'outcome', 'numicu', 'data', 'fecha_alta', 'estada', 'edat_alta', 'serveialta',
+    'tipus_assistencia', 'resultat_alta', 'sexo', 'antecedent_mpoc', 'NEWS'
+]
+
+for idx in data_train.index[data_train['outcome'] == 1]:
+    start = max(0, idx - 24)
+    window = data_train.iloc[start:idx]
+
+    if window.empty:
+        continue
+
+    plot_df = window.drop(columns=cols_to_drop_plot, errors='ignore')
+    if plot_df.shape[1] == 0:
+        continue
+
+    plt.figure(figsize=(10, 4))
+    plot_df.plot(ax=plt.gca())
+    #plt.title(f"Evolució 24 mostres abans d'outcome=1 (índex {idx})")
+    #plt.xlabel('Temps / índex')
+    #plt.ylabel('Valor')
+    #plt.legend(loc='best')
+    #plt.show()
+del(cols_to_drop_plot, idx, plot_df, start, window)

@@ -6,7 +6,20 @@ import numpy as np
 from matplotlib.pyplot import subplots
 import funcions
 
-dades1= pd.read_excel('C:/Users/UDM-AFIC/Desktop/Model NEWS/Ahora si que si/Dades/Versió mini.xlsx')
+#A l'excel, hem borrat el (mEq/L) i el .000 de les dates
+dades1= pd.read_excel('C:/Users/UDM-AFIC/Desktop/Model NEWS/Ahora si que si/Dades/2024_1sem.xlsx')
+
+"Excluim pacients"
+dades1.drop(dades1[dades1['edat_alta'] < 18].index, inplace=True) 
+serveis_descartats=['CIRURGIA PEDIATRICA', 'CIRURGIA PEDIATRICA HOSP', 'CURES PAL_LIATIVES GERIATRIA',
+                    'DERMATOLOGIA', 'DROGODEPENDENCIES HOSP', 'GINECOLOGIA HOSP', 'HOSPITAL DE DIA ADOLESCENTS',
+                    'HOSPITAL DE DIA TEA', 'HOSPITALITZACIÓ DOMICILIÀRIA H', 'MEDICINA INTERNA H.APTIMA',
+                    'OBSTETRICIA HOSP', 'OFTALMOLOGIA HOSP', 'PEDIATRIA HOSP', 'RADIODIAGNOSTIC HOSPITALITZACIO',
+                    'TRANSTORN ESPECTRE AUTISTA HOSPITALITZACIÓ', 'TRANSTORNS ALIMENTACIO', 'UROLOGIA H.APTIMA']
+dades1=dades1[~dades1['serveialta'].isin(serveis_descartats)]
+dades1.drop(dades1[dades1['estada'] < 2].index, inplace=True)
+dades1.drop(['numerohc', 'c_diag_1'], axis=1)
+del(serveis_descartats)
 
 date_cols = [col for col in dades1.columns if 'data' in col.lower()]
 dades1['data'] = dades1[date_cols].bfill(axis=1).iloc[:, 0]
@@ -30,7 +43,7 @@ dades_fill1['ta_mitja']=dades_fill1['ta_sist']+(2*dades_fill1['ta_diast']/3)
 
 "Traiem els pacients que tenen menys mostres que dies hospitalitzats"
 dades_fill1['comptatge'] = dades_fill1.groupby('numicu')['numicu'].transform('count')
-dades_filtrat1 = dades_fill1[dades_fill1['comptatge'] >= 2*dades_fill1['estada']].copy()
+dades_filtrat1 = dades_fill1[dades_fill1['comptatge'] >= 3*dades_fill1['estada']].copy()
 dades_filtrat1.drop(columns='comptatge', inplace=True)
 dades_filtrat1= dades_filtrat1.sort_values(by=['numicu', 'data'])
 
