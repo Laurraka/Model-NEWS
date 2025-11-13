@@ -1,5 +1,4 @@
 # Model-NEWS
-Canviar les rutes dels arxius!!!
 
 Model basat en les dades oferides per Physionet per al Challenge de 2012. Aquest model calcula la probabilitat de morir a l'hospital basant-se en l'evolució dels valors de les constants vitals. Notem que en aquest estudi ens focalitzem en millorar l'especificitat abans que millorar l'exactitud.
 
