@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""
+Created on Tue Nov 18 10:28:53 2025
+
+@author: UDM-AFIC
+"""
 import pandas as pd
 import glob
 import os
@@ -25,19 +30,20 @@ data1=pd.read_csv("C:/Users/UDM-AFIC/Desktop/Model NEWS/Ahora si que si/Codi/dat
 data2=pd.read_csv("C:/Users/UDM-AFIC/Desktop/Model NEWS/Ahora si que si/Codi/data2(1H).csv")
 data3=pd.read_csv("C:/Users/UDM-AFIC/Desktop/Model NEWS/Ahora si que si/Codi/data3(1H).csv")
 
-"Seleccionem diagnòstic que ens interessa"
-prefixos = tuple(f"J") 
-#prefixos = tuple(f"J{n}" for n in range(10, 19)) 
+"Seleccionem diagnòstics"
+prefixos = tuple(f"J{n}" for n in range(10, 19))
 data1 = data1[data1["c_diag_1"].str.startswith(prefixos, na=False)]
+(data1['outcome'] == 1).sum()
 data2 = data2[data2["c_diag_1"].str.startswith(prefixos, na=False)]
+(data2['outcome'] == 1).sum()
 data3 = data3[data3["c_diag_1"].str.startswith(prefixos, na=False)]
-
+(data3['outcome'] == 1).sum()
 data = pd.concat([data1, data2, data3], ignore_index=True)
 
 "Separem train set i data set"
 scaler = StandardScaler()
-features = [ #Modificar
-    'potassi', 'ph','lact', 'hb','oxigenoterapia', 'glasgow', 'ta_sist', 
+features = [
+    'potassi','ph','lact', 'hb','oxigenoterapia', 'glasgow', 'ta_sist', 
     'ta_diast', 'ta_mitja', 'fc', 'sato2', 't_axilar', 'f_respi'
 ]
 
@@ -75,44 +81,30 @@ y_data_train = np.array(y_data_train)
 X_data_test = np.array(X_data_test)
 y_data_test = np.array(y_data_test)
 
-"Carreguem el model"
-model=joblib.load("versio30.pkl")
+"Model LSTM"
+model = Sequential([
+    Masking(mask_value=0.0, input_shape=(timesteps, X_data_train.shape[2])),
+    LSTM(128, return_sequences=True),
+    Dropout(0.3),
+    LSTM(64),
+    Dropout(0.3),
+    Dense(1, activation='sigmoid')
+])
 
-"Evaluem el model"
-results = model.evaluate(X_data_test, y_data_test, verbose=0)
-print(f"\nResultats LSTM - Predicció NEWS≥6:")
-print(f"Exactitud: {results[1]:.3f} | AUC: {results[2]:.3f} | Precisió: {results[3]:.3f} | Recall: {results[4]:.3f}")
+model.compile(optimizer=Adam(1e-3),
+              loss='binary_crossentropy',
+              metrics=['accuracy', 'AUC', 'Precision', 'Recall'])
 
-"Precision-Recall (Serveis descartats)"
-probs = model.predict(X_data_test).ravel()
-precision, recall, thresholds = precision_recall_curve(y_data_test, probs)
-plt.plot(recall, precision)
-plt.xlabel("Recall (sensibilitat)")
-plt.ylabel("Precision (precisió)")
-plt.title("Precision-Recall Curve")
-plt.grid(True)
-plt.show()
+model.summary()
 
-thresholds = np.linspace(0, 1, 200)
-precision_list = []
-recall_list = []
+"Entrenament" 
+history = model.fit(
+    X_data_train, y_data_train,
+    validation_split=0.1,
+    epochs=30,
+    batch_size=64,
+    class_weight={0:1, 1:4},  # per compensar si hi ha poques observacions amb NEWS ≥6
+    verbose=1
+)
 
-f1_scores = []
-for thr in thresholds:
-    preds = (probs >= thr).astype(int)
-    f1_scores.append(f1_score(y_data_test, preds))
-
-best_thr_f1 = thresholds[np.argmax(f1_scores)]
-
-final_predictions = (probs >= best_thr_f1).astype(int)
-cm = confusion_matrix(y_data_test, final_predictions)
-TN, FP, FN, TP= cm.ravel()
-sensibilitat = TP / (TP + FN)
-especificitat = TN / (TN + FP)
-precisio=TP/(TP+FP)
-auc_pr = auc(recall, precision)
-
-print(f"AUC-PR: {auc_pr:.4f}")
-print(f"Precisió: {precisio:.4f}")
-print(f"Sensibilitat: {sensibilitat:.4f}") 
-print(f"Especificitat: {especificitat:.4f}") 
+joblib.dump(model, "versio31.pkl")
