@@ -6,96 +6,116 @@ import numpy as np
 from matplotlib.pyplot import subplots
 import funcions
 
-#A l'excel, hem borrat el (mEq/L) i el .000 de les dates
-dades1= pd.read_excel('C:/Users/UDM-AFIC/Desktop/Model NEWS/Ahora si que si/Dades/2024_1sem.xlsx')
+"Carreguem dades"
+dades=pd.read_excel('C:/Users/UDM-AFIC/Desktop/Model NEWS/Ahora si que si/Dades/2025_resta.xlsx')
+
+"Rangs"
+rangs = {
+    'potassi': (1, 10),
+    'ph': (6.8, 7.8),
+    'lact': (0, 20),
+    'hb': (2, 23),
+    'glasgow': (3, 15),
+    'ta_sist': (50, 300),
+    'ta_diast': (20, 170),
+    'fc': (20, 300),
+    'sato2': (50, 100),
+    't_axilar': (20, 45),
+    'f_respi': (2, 70)
+}
+dades = funcions.elimina_pacients_per_rangs(dades, rangs, 'numicu')
 
 "Excluim pacients"
-dades1.drop(dades1[dades1['edat_alta'] < 18].index, inplace=True) 
+dades.drop(dades[dades['edat_alta'] < 18].index, inplace=True) 
 serveis_descartats=['CIRURGIA PEDIATRICA', 'CIRURGIA PEDIATRICA HOSP', 'CURES PAL_LIATIVES GERIATRIA',
                     'DERMATOLOGIA', 'DROGODEPENDENCIES HOSP', 'GINECOLOGIA HOSP', 'HOSPITAL DE DIA ADOLESCENTS',
                     'HOSPITAL DE DIA TEA', 'HOSPITALITZACIÓ DOMICILIÀRIA H', 'MEDICINA INTERNA H.APTIMA',
                     'OBSTETRICIA HOSP', 'OFTALMOLOGIA HOSP', 'PEDIATRIA HOSP', 'PSIQUIATRIA HOSP ','RADIODIAGNOSTIC HOSPITALITZACIO',
                     'TRANSTORN ESPECTRE AUTISTA HOSPITALITZACIÓ', 'TRANSTORNS ALIMENTACIO', 'UROLOGIA H.APTIMA']
-dades1=dades1[~dades1['serveialta'].isin(serveis_descartats)]
-dades1.drop(dades1[dades1['estada'] < 2].index, inplace=True)
-dades1.drop(['numerohc', 'c_diag_1'], axis=1)
+dades=dades[~dades['serveialta'].isin(serveis_descartats)]
+dades.drop(dades[dades['estada'] < 2].index, inplace=True)
+dades.drop(['numerohc'], axis=1)
 del(serveis_descartats)
 
-date_cols = [col for col in dades1.columns if 'data' in col.lower()]
-dades1['data'] = dades1[date_cols].bfill(axis=1).iloc[:, 0]
-dades1=dades1.dropna(subset=['data'])
-dades1= dades1.drop(columns=date_cols)
-
-dades1 = dades1.groupby('data', as_index=False).first()
-dades1= dades1.sort_values(['numicu', 'data']).reset_index(drop=True)
-dades1=dades1[['numicu', 'data', 'fecha_alta', 'edat_alta', 'serveialta', 'estada', 
-       'tipus_assistencia', 'numerohc', 'resultat_alta', 'descripcion', 
+"Ajuntem mateixa data en una sola fila"
+date_cols = [col for col in dades.columns if 'data' in col.lower()]
+dades['data'] = dades[date_cols].bfill(axis=1).iloc[:, 0]
+dades=dades.dropna(subset=['data'])
+dades= dades.drop(columns=date_cols)
+dades= dades.groupby('data', as_index=False).first()
+dades= dades.sort_values(['numicu', 'data']).reset_index(drop=True)
+dades=dades[['numicu', 'data', 'fecha_alta', 'edat_alta', 'serveialta', 'estada', 
+       'tipus_assistencia', 'numerohc', 'resultat_alta', 'c_diag_1','descripcion', 
        'sexo', 'potassi', 'ph', 'lact', 'hb', 'oxigenoterapia', 
        'antecedent_mpoc', 'glasgow', 'ta_sist', 'ta_diast', 'ta_mitja', 'fc', 
        'sato2', 't_axilar', 'f_respi']]
 del(date_cols)
 
 "Omplim valors NaN"
-dades_fill1=funcions.omplir_dades(dades1)
-dades_fill1['oxigenoterapia'] = dades_fill1['oxigenoterapia'].map({'SI': 1, 'NO': 0})
-dades_fill1=dades_fill1.drop(columns=['ta_mitja', 'numerohc'])
-dades_fill1['ta_mitja']=dades_fill1['ta_sist']+(2*dades_fill1['ta_diast']/3)
+dades_fill=funcions.omplir_dades(dades)
+dades_fill['oxigenoterapia'] = dades_fill['oxigenoterapia'].map({'SI': 1, 'NO': 0})
+dades_fill=dades_fill.drop(columns=['ta_mitja', 'numerohc'])
+dades_fill['ta_mitja']=dades_fill['ta_sist']+(2*dades_fill['ta_diast']/3)
 
 "Traiem els pacients que tenen menys mostres que dies hospitalitzats"
-dades_fill1['comptatge'] = dades_fill1.groupby('numicu')['numicu'].transform('count')
-dades_filtrat1 = dades_fill1[dades_fill1['comptatge'] >= 3*dades_fill1['estada']].copy()
-dades_filtrat1.drop(columns='comptatge', inplace=True)
-dades_filtrat1= dades_filtrat1.sort_values(by=['numicu', 'data'])
+dades_fill['comptatge'] = dades_fill.groupby('numicu')['numicu'].transform('count')
+dades_filtrat = dades_fill[dades_fill['comptatge'] >= 3*dades_fill['estada']].copy()
+dades_filtrat.drop(columns='comptatge', inplace=True)
+dades_filtrat= dades_filtrat.sort_values(by=['numicu', 'data'])
 
 "Creem mostres cada 1h hora"
-dades_filtrat1['data'] = pd.to_datetime(dades_filtrat1['data'], errors='coerce')
-dades_filtrat1['fecha_alta'] = pd.to_datetime(dades_filtrat1['fecha_alta'], errors='coerce')
-data1= dades_filtrat1.groupby('numicu', group_keys=False).apply(funcions.resample_pacient)
+dades_filtrat['data'] = pd.to_datetime(dades_filtrat['data'], errors='coerce')
+dades_filtrat['fecha_alta'] = pd.to_datetime(dades_filtrat['fecha_alta'], errors='coerce')
+data= dades_filtrat.groupby('numicu', group_keys=False).apply(funcions.resample_pacient)
 # Omplim dades que son objects
-df2_ultim = dades_filtrat1.drop_duplicates(subset='numicu', keep='last')
-data1['fecha_alta'] = data1['numicu'].map(
+df2_ultim = dades_filtrat.drop_duplicates(subset='numicu', keep='last')
+data['fecha_alta'] = data['numicu'].map(
     df2_ultim.set_index('numicu')['fecha_alta']
 )
 
-data1['edat_alta'] = data1['numicu'].map(
+data['edat_alta'] = data['numicu'].map(
     df2_ultim.set_index('numicu')['edat_alta']
 )
 
-data1['serveialta'] = data1['numicu'].map(
+data['serveialta'] = data['numicu'].map(
     df2_ultim.set_index('numicu')['serveialta']
 )
 
-data1['estada'] = data1['numicu'].map(
+data['estada'] = data['numicu'].map(
     df2_ultim.set_index('numicu')['estada']
 )
 
-data1['tipus_assistencia'] = data1['numicu'].map(
+data['tipus_assistencia'] = data['numicu'].map(
     df2_ultim.set_index('numicu')['tipus_assistencia']
 )
 
-data1['resultat_alta'] = data1['numicu'].map(
+data['resultat_alta'] = data['numicu'].map(
     df2_ultim.set_index('numicu')['resultat_alta']
 )
 
-data1['descripcion'] = data1['numicu'].map(
+data['c_diag_1'] = data['numicu'].map(
+    df2_ultim.set_index('numicu')['c_diag_1']
+)
+
+data['descripcion'] = data['numicu'].map(
     df2_ultim.set_index('numicu')['descripcion']
 )
 
-data1['sexo'] = data1['numicu'].map(
+data['sexo'] = data['numicu'].map(
     df2_ultim.set_index('numicu')['sexo']
 )
 
-data1['antecedent_mpoc'] = data1['numicu'].map(
+data['antecedent_mpoc'] = data['numicu'].map(
     df2_ultim.set_index('numicu')['antecedent_mpoc']
 )
 
-data1=data1[['numicu', 'data', 'fecha_alta', 'edat_alta', 'serveialta', 
-                   'estada', 'tipus_assistencia', 'resultat_alta', 'descripcion', 'sexo', 'potassi',
+data=data[['numicu', 'data', 'fecha_alta', 'edat_alta', 'serveialta', 
+                   'estada', 'tipus_assistencia', 'resultat_alta', 'c_diag_1', 'descripcion', 'sexo', 'potassi',
                    'ph', 'lact', 'hb', 'oxigenoterapia', 'antecedent_mpoc', 'glasgow', 'ta_sist', 
                    'ta_diast', 'ta_mitja', 'fc', 'sato2', 't_axilar', 'f_respi']]
 
 "Calculem el NEWS"
-data1['NEWS'] = data1.apply(
+data['NEWS'] = data.apply(
     lambda x: (
         funcions.Resp_Rate(x["f_respi"]) +
         funcions.Temperature(x["t_axilar"]) +
@@ -110,6 +130,13 @@ data1['NEWS'] = data1.apply(
 del(df2_ultim)
 
 "Calculem l'outcome"
-data1['outcome'] = (data1['NEWS'] > 6).astype(int)
-(data1['outcome'] == 1).sum()
-del(dades1, dades_fill1, dades_filtrat1)
+data['outcome'] = (data['NEWS'] > 6).astype(int)
+(data['outcome'] == 1).sum()
+del(dades, dades_fill, dades_filtrat)
+
+"Anàlisi descriptiu"
+descripcio=data.describe()
+data.dtypes
+
+"Guardem dades"
+data.to_csv('data4(1H).csv', index=False)
