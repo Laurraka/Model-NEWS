@@ -30,11 +30,12 @@ dades.drop(dades[dades['edat_alta'] < 18].index, inplace=True)
 serveis_descartats=['CIRURGIA PEDIATRICA', 'CIRURGIA PEDIATRICA HOSP', 'CURES PAL_LIATIVES GERIATRIA',
                     'DERMATOLOGIA', 'DROGODEPENDENCIES HOSP', 'GINECOLOGIA HOSP', 'HOSPITAL DE DIA ADOLESCENTS',
                     'HOSPITAL DE DIA TEA', 'HOSPITALITZACIÓ DOMICILIÀRIA H', 'MEDICINA INTERNA H.APTIMA',
-                    'OBSTETRICIA HOSP', 'OFTALMOLOGIA HOSP', 'PEDIATRIA HOSP', 'PSIQUIATRIA HOSP ','RADIODIAGNOSTIC HOSPITALITZACIO',
+                    'OBSTETRICIA HOSP', 'OFTALMOLOGIA HOSP', 'PEDIATRIA HOSP', 'PSIQUIATRIA HOSP','RADIODIAGNOSTIC HOSPITALITZACIO',
                     'TRANSTORN ESPECTRE AUTISTA HOSPITALITZACIÓ', 'TRANSTORNS ALIMENTACIO', 'UROLOGIA H.APTIMA']
 dades=dades[~dades['serveialta'].isin(serveis_descartats)]
 dades.drop(dades[dades['estada'] < 2].index, inplace=True)
 dades.drop(['numerohc'], axis=1)
+dades = dades[dades['tipus_assistencia'].astype(str).str.startswith('1')]
 del(serveis_descartats)
 
 "Ajuntem mateixa data en una sola fila"
