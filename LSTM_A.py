@@ -1,33 +1,47 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Nov 18 10:28:53 2025
+Created on Thu Jan  8 09:56:12 2026
 
 @author: UDM-AFIC
 """
+
 import pandas as pd
+import glob
+import os
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.preprocessing import StandardScaler
+from matplotlib.pyplot import subplots
+from sklearn.preprocessing import MinMaxScaler
+import seaborn as sns
+import matplotlib.backend_bases
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
 
-from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import Input, LSTM, Dense, Dropout, Masking, Attention
-from tensorflow.keras.optimizers import Adam
-from sklearn.metrics import precision_recall_curve, auc
-from sklearn.metrics import f1_score
-from sklearn.metrics import confusion_matrix
-import joblib
-from keras.models import load_model
-from itertools import chain
 import tensorflow as tf
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import (
+    Input, LSTM, Dense, Dropout, Masking,
+    Attention, GlobalAveragePooling1D
+)
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout, Masking
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.utils import to_categorical
+import shap
+from sklearn.metrics import precision_recall_curve, auc
+from sklearn.metrics import precision_score, recall_score, f1_score
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+import joblib
+from itertools import chain
 
 """
 
-En aquest fitxer generem un model LSTM amb Attention mirant el valor (normalitzat) de cada variable que 
-puntua al NEWS2. Carregar els arxius segons la mida de la finestra desitjada. Ajustar també 
+En aquest fitxer generem un model LSTM amb Attention per a intentar predir el següent valor NEWS2 a partir 
+dels anteriors. Carregar els arxius segons la mida de la finestra desitjada. Ajustar també 
 les variables timesteps (hores anteriors que es miraran) i windowsize.
 Al final de tot, s'imprimeix la confusion matrix que mesura si s'ha activat l'alerta en 
 el moment que tocava per al milor threshold trobat. Tenir en compte que a la funció per a calcular 
-la confusion matrix es miren també X valors posteriors, cosa que potser no és del tot correcte.
+la confusion matrix es miren també X valors posteriors, cosa que potser no és del tot correcte. 
 Modificar també el diagnòstic pel qual es vol estudiar el model.
 
 """
@@ -39,7 +53,7 @@ data4=pd.read_csv("C:/Users/UDM-AFIC/Desktop/Model NEWS/Ahora si que si/Codi/dat
 
 "Seleccionem diagnòstics"
 prefixos = tuple(f"I")
-#prefixos = tuple(f"I{n}" for n in range(60, 70))
+#prefixos = tuple(f"I{n}" for n in range(60,70))
 # prefixos = tuple(chain( 
 #       (f"A"),
 #       (f"B")
@@ -54,27 +68,14 @@ data4 = data4[data4["c_diag_1"].str.startswith(prefixos, na=False)]
 (data4['outcome'] == 1).sum()
 data = pd.concat([data1, data2, data3, data4], ignore_index=True)
 
-"Separem train set i data set"   
-scaler = StandardScaler()
-features = [
-    'glasgow',
-    'oxigenoterapia',
-    'ta_sist', 
-    'fc', 
-    'sato2', 
-    't_axilar', 
-    'f_respi'
-]
 
+"Separem train set i data set"   
 pacients = data['numicu'].unique()
 cut = int(len(pacients) * 0.8)
 train_pacients = pacients[:cut] 
 test_pacients  = pacients[cut:]   
 data_train = data[data['numicu'].isin(train_pacients)].reset_index(drop=True)
 data_test  = data[data['numicu'].isin(test_pacients)].reset_index(drop=True)
-
-data_train[features] = scaler.fit_transform(data_train[features])
-data_test[features] = scaler.fit_transform(data_test[features])
 
 X_data_train, y_data_train=[], []
 X_data_test, y_data_test=[], []
@@ -83,19 +84,23 @@ timesteps = 12
 windowsize = 1
 
 for pid, group in data_train.groupby('numicu'):
-    data = group[features].values
+    data = group['NEWS'].values
     labels = group['outcome'].values
     for i in range(timesteps//windowsize, len(group)):
-        X_data_train.append(data[i-timesteps//windowsize:i]) #Tots els pacients seguits
+        X_data_train.append(
+            np.concatenate(([pid], data[i-timesteps//windowsize:i]))
+        )
         y_data_train.append(
             np.array([pid, labels[i]])
         )
         
 for pid, group in data_test.groupby('numicu'):
-    data = group[features].values
+    data = group['NEWS'].values
     labels = group['outcome'].values
     for i in range(timesteps//windowsize, len(group)):
-        X_data_test.append(data[i-timesteps//windowsize:i]) #Tots els pacients seguits
+        X_data_test.append(
+            np.concatenate(([pid], data[i-timesteps//windowsize:i]))
+        )
         y_data_test.append(
             np.array([pid, labels[i]])
         )
@@ -106,12 +111,13 @@ X_data_test = np.array(X_data_test)
 y_data_test = np.array(y_data_test)
 
 "Model LSTM + Attention"
-seq_input = Input(shape=(timesteps//windowsize, X_data_train.shape[2]))
+
+seq_input = Input(shape=(timesteps-1, 1))
 
 x = Masking(mask_value=0.0)(seq_input)
 
 # IMPORTANT: return_sequences=True per poder aplicar attention
-x = LSTM(128, return_sequences=True)(x)
+x = LSTM(64, return_sequences=True)(x)
 x = Dropout(0.3)(x)
 
 x = LSTM(64, return_sequences=True)(x)
@@ -128,7 +134,7 @@ context = Dense(32, activation="relu")(context)
 context = context[:, -1, :]   # últim timestep després de l'attention
 
 # ---- Sortida ----
-output = Dense(1, activation='sigmoid')(context)
+output = Dense(1)(context)
 
 model = Model(inputs=seq_input, outputs=output)
 
@@ -144,7 +150,7 @@ def focal_loss(alpha=1.0, gamma=2.0):
 
 model.compile(
     optimizer=Adam(1e-3),
-    loss=focal_loss(alpha=0.75, gamma=2.0),
+    loss=focal_loss(alpha=1, gamma=1.5),
     metrics=[
         'accuracy',
         tf.keras.metrics.AUC(curve="PR", name="auc_pr"),
@@ -153,24 +159,26 @@ model.compile(
     ]
 )
 
-model.summary()
-
 "Entrenament" 
 history = model.fit(
-    X_data_train, y_data_train[:,1],
+    X_data_train[:,1:timesteps+1], y_data_train[:,1],
     validation_split=0.1,
-    epochs=50,
+    epochs=100,
     batch_size=64, 
     verbose=1
 )
 
+#model.save('Experiment.h5')
+#model=joblib.load("versio302.pkl")
+
 "Evaluem el model"
-results = model.evaluate(X_data_test, y_data_test[:,1], verbose=0)
+results = model.evaluate(X_data_test[:,1:timesteps+1], y_data_test[:,1], verbose=0)
 print(f"\nResultats LSTM - Predicció NEWS≥6:")
 print(f"Exactitud: {results[1]:.3f} | AUC: {results[2]:.3f} | Precisió: {results[3]:.3f} | Recall: {results[4]:.3f}")
 
 "Precision-Recall (Serveis descartats)"
-probs = model.predict(X_data_test).ravel()
+probs = model.predict(X_data_test[:,1:timesteps+1]).ravel()
+#Fiquem numicu a les probabilitats
 probs2=probs.reshape(-1,1)
 comparativa_numicu=np.concatenate((y_data_test,probs2), axis=1)
 precision, recall, thresholds = precision_recall_curve(y_data_test[:,1], probs)
@@ -205,7 +213,7 @@ print(f"Especificitat: {especificitat:.4f}")
 
 idx = np.where(recall < 0.80)[0][0]
 precision_80 = precision[idx]
-print(f"Precisió amb aprox. un 80% de sensibilitat: {precision_80:.2f}")
+print(f"Precisió amb aprox. un 80% de sensibilitat: {precision_80:.2f}")   
 
 def compute_cm_onset(threshold, window=5):
     thres=(probs>=threshold).astype(int)
@@ -291,3 +299,12 @@ cm = np.array([[TN, FP],
                [FN, TP]])
 
 print(cm)
+
+model.compile(
+    optimizer=Adam(1e-3),
+    loss='binary_crossentropy',
+    metrics=['accuracy', 'AUC', 'Precision', 'Recall']
+)
+
+model.summary()
+
