@@ -11,13 +11,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import subplots
 from sklearn.preprocessing import MinMaxScaler
-import seaborn as sns
 import matplotlib.backend_bases
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
+from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.layers import LSTM, Dense, Dropout, Masking
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.utils import to_categorical
@@ -26,6 +26,8 @@ from sklearn.metrics import precision_score, recall_score, f1_score
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import joblib
 from itertools import chain
+
+import wandb
 
 """
 
@@ -43,24 +45,29 @@ data1=pd.read_csv("C:/Users/UDM-AFIC/Desktop/Model NEWS/Ahora si que si/Codi/dat
 data2=pd.read_csv("C:/Users/UDM-AFIC/Desktop/Model NEWS/Ahora si que si/Codi/data2(1H).csv")
 data3=pd.read_csv("C:/Users/UDM-AFIC/Desktop/Model NEWS/Ahora si que si/Codi/data3(1H).csv")
 data4=pd.read_csv("C:/Users/UDM-AFIC/Desktop/Model NEWS/Ahora si que si/Codi/data4(1H).csv")
+data5=pd.read_csv("C:/Users/UDM-AFIC/Desktop/Model NEWS/Ahora si que si/Codi/data5(1H).csv")
+data6=pd.read_csv("C:/Users/UDM-AFIC/Desktop/Model NEWS/Ahora si que si/Codi/data6(1H).csv")
 
 "Seleccionem diagnòstics"
-prefixos = tuple(f"I")
+#prefixos = tuple(f"I")
 #prefixos = tuple(f"I{n}" for n in range(60, 70))
 # prefixos = tuple(chain( 
 #       (f"I"),
-#       (f"J"),
-#       (f"C")
+#       (f"J")
 # )) 
-data1 = data1[data1["c_diag_1"].str.startswith(prefixos, na=False)]
-(data1['outcome'] == 1).sum()
-data2 = data2[data2["c_diag_1"].str.startswith(prefixos, na=False)]
-(data2['outcome'] == 1).sum()
-data3 = data3[data3["c_diag_1"].str.startswith(prefixos, na=False)]
-(data3['outcome'] == 1).sum()
-data4 = data4[data4["c_diag_1"].str.startswith(prefixos, na=False)]
-(data4['outcome'] == 1).sum()
-data = pd.concat([data1, data2, data3, data4], ignore_index=True)
+# data1 = data1[data1["c_diag_1"].str.startswith(prefixos, na=False)]
+# (data1['outcome'] == 1).sum()
+# data2 = data2[data2["c_diag_1"].str.startswith(prefixos, na=False)]
+# (data2['outcome'] == 1).sum()
+# data3 = data3[data3["c_diag_1"].str.startswith(prefixos, na=False)]
+# (data3['outcome'] == 1).sum()
+# data4 = data4[data4["c_diag_1"].str.startswith(prefixos, na=False)]
+# (data4['outcome'] == 1).sum()
+# data5 = data5[data5["c_diag_1"].str.startswith(prefixos, na=False)]
+# (data5['outcome'] == 1).sum()
+# data6 = data6[data6["c_diag_1"].str.startswith(prefixos, na=False)]
+# (data6['outcome'] == 1).sum()
+data = pd.concat([data1, data2, data3, data4, data5, data6], ignore_index=True)
 
 "Separem train set i data set"   
 scaler = StandardScaler()
@@ -98,6 +105,21 @@ X_data_test, y_data_test=[], []
 timesteps = 12
 windowsize = 1  
 
+run = wandb.init(
+    # Set the wandb entity where your project will be logged (generally your team name).
+    entity="laurarocap09-particular",
+    # Set the wandb project where this run will be logged.
+    project="NEWS",
+    # Track hyperparameters and run metadata.
+    config={
+        "dataset": "23-25",
+        "Diagnòstics": "Tots",
+        "timesteps": timesteps,
+        "windowsize": windowsize,
+        "Variables": "NEWS2 + Var. indiv."
+    },
+)
+
 for pid, group in data_train.groupby('numicu'):
     data = group[features].values
     labels = group['outcome'].values
@@ -131,7 +153,7 @@ model = Sequential([
     Dense(1, activation='sigmoid')
 ])
 
-def focal_loss(alpha=1.0, gamma=2.0):
+def focal_loss(alpha=1.0, gamma=1.5):
     def loss(y_true, y_pred):
         y_pred = tf.clip_by_value(y_pred, 1e-7, 1.0 - 1e-7)
         bce = -(y_true * tf.math.log(y_pred) +
@@ -142,7 +164,8 @@ def focal_loss(alpha=1.0, gamma=2.0):
     return loss
 
 model.compile(
-    optimizer=Adam(1e-3),
+    optimizer=Adam(1e-3,
+                   clipnorm=1.0),
     loss=focal_loss(alpha=1, gamma=1.5),
     metrics=[
         'accuracy',
@@ -154,17 +177,22 @@ model.compile(
 
 model.summary()
 
-"Entrenament" 
+"Entrenament"
+early_stop = EarlyStopping(
+    monitor='val_loss',
+    patience=10,
+    restore_best_weights=True
+)
+ 
 history = model.fit(
-    X_data_train, y_data_train[:,1],
+    X_data_train[:, 1:timesteps+1],
+    y_data_train[:, 1], 
     validation_split=0.1,
-    epochs=40,
-    batch_size=64, 
+    epochs=200,
+    batch_size=1024,
+    callbacks=[early_stop],
     verbose=1
 ) 
-
-#joblib.dump(model, "versio533.pkl")
-#model=joblib.load("versio302.pkl")
 
 "Evaluem el model"
 results = model.evaluate(X_data_test, y_data_test[:,1], verbose=0)
@@ -209,7 +237,7 @@ idx = np.where(recall < 0.80)[0][0]
 precision_80 = precision[idx]
 print(f"Precisió amb aprox. un 80% de sensibilitat: {precision_80:.2f}")
 
-def compute_cm_onset(threshold, window=5):
+def compute_cm_onset(threshold, window=7):
     thres=(probs>=threshold).astype(int)
     thres=thres.reshape(-1,1)
     conc=np.concatenate((comparativa_numicu,thres), axis=1)
@@ -237,7 +265,7 @@ def compute_cm_onset(threshold, window=5):
                 
         for i in range(0,len(Y)):
             if Y[i]==0:
-                inici=max(0,i-7)
+                inici=max(0,i-window)
                 if all(x == 0 for x in X[inici:i+1]):
                     TN += 1
                     
@@ -248,13 +276,13 @@ def compute_cm_onset(threshold, window=5):
         
         for i in range(0,len(Y)):
             if Y[i]==1:
-                inici=max(0,i-7)
+                inici=max(0,i-window)
                 if all(x == 0 for x in X[inici:i+1]):
                     FN += 1
                     
         for i in range(0,len(Y)):
             if Y[i]==1:
-                inici=max(0,i-7)
+                inici=max(0,i-window)
                 if any(x == 1 for x in X[inici:i+1]):
                     TP += 1
                     
@@ -293,3 +321,6 @@ cm = np.array([[TN, FP],
                [FN, TP]])
 
 print(cm)
+
+run.log({"F1": best_f1, "Sensibilitat": TP/(TP+FN), "VPP": TP/(TP+FP)})
+run.finish()
