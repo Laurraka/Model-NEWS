@@ -9,6 +9,18 @@ import glob
 import os
 import numpy as np
 
+def elimina_pacients_per_rangs(df, rangs, id_col):
+    pacients_erronis = set()
+
+    for col, (minv, maxv) in rangs.items():
+        pacients_col = df.loc[(df[col] < minv) | (df[col] > maxv), id_col].unique()
+        pacients_erronis.update(pacients_col)
+
+    # Eliminar tots els pacients trobats
+    df_filtrat = df[~df[id_col].isin(pacients_erronis)]
+    return df_filtrat
+
+
 def omplir_dades(dades):
     copia = dades.copy()
     skip_cols = ['numicu', 'data', 'fecha_alta', 'edat_alta', 'serveialta', 'estada',
@@ -34,10 +46,31 @@ def omplir_dades(dades):
     return copia
 
 def resample_pacient(grup):
-    grup = grup.set_index('data')
-    grup_resampled = grup.resample('1H').mean(numeric_only=True)
-    grup_resampled = grup_resampled.interpolate(method='time', limit_direction='both')
-    grup_resampled['numicu'] = grup['numicu'].iloc[0]
+    grup = grup.copy()
+
+    # Guardem el valor original de numicu
+    numicu_val = grup['numicu'].iloc[0]
+
+    # Assignar cada mesura a la seva hora
+    grup['data'] = grup['data'].dt.floor('H')
+
+    # Eliminar numicu abans d'agregar
+    grup_sense_numicu = grup.drop(columns=['numicu'])
+
+    # Agregar duplicats dins la mateixa hora
+    grup_hourly = (
+        grup_sense_numicu
+        .groupby('data', as_index=False)
+        .mean(numeric_only=True)
+    )
+
+    grup_hourly = grup_hourly.set_index('data').sort_index()
+
+    # Crear graella horària + forward fill
+    grup_resampled = grup_hourly.resample('1H').ffill()
+
+    # Reinjectar numicu ORIGINAL
+    grup_resampled['numicu'] = numicu_val
 
     return grup_resampled.reset_index()
 
@@ -63,9 +96,9 @@ def valors_normals(parametre, sexe):
         return 7.4
     if parametre=="hb":
         if(sexe=="V"):
-            return 150
+            return 15
         else:
-            return 135
+            return 13.5
     if parametre=="glasgow":
         return 15
     if parametre=="antecedent_mpoc":
